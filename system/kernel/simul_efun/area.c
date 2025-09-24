@@ -139,42 +139,54 @@ int area_move(object area, object who, int x, int y)
     return 0;
 }
 
-// 重写驱动 present函数
+// 重写驱动 present函数（优化对象参数检查逻辑）
 object present(mixed arg, object ob)
 {
+    object caller = previous_object() || this_player();
+    object env = environment(caller);
+    // 处理无第二个参数的情况：根据arg类型区分查找范围
     if (!objectp(ob))
     {
-        return efun::present(arg);
+        if (stringp(arg))
+        {
+            // arg是字符串：在caller的环境中查找（模拟原生行为）
+            return efun::present(arg, env ? env : caller);
+        }
+        else if (objectp(arg))
+        {
+            // 用原生函数检检查对象arg是否在caller的物品栏或其环境中
+            if (efun::present(arg, caller) || (env && efun::present(arg, env)))
+            {
+                return environment(arg); // 两种情况统一返回父对象
+            }
+            return 0; // 不在范围内
+        }
+        return 0; // 非字符串/对象类型
     }
 
+    // 处理有第二个参数的情况（保持原逻辑）
     if (ob->is_area())
     {
         int p = 0, index;
         object *obs, t;
         mapping area_info;
 
-        area_info = this_player()->query("area_info");
-
+        area_info = caller->query("area_info");
         if (sscanf(arg, "%s %d", arg, index) != 2)
             index = 1;
 
         obs = ob->query_inventory(area_info["x_axis"], area_info["y_axis"]);
-
         foreach (t in obs)
         {
-            if (!objectp(t))
-                continue;
-            if (t->id(arg))
-            {
-                p += 1;
-                if (p == index)
-                    return t;
-            }
+            if (objectp(t) && t->id(arg) && ++p == index)
+                return t;
         }
         return 0;
     }
     else
+    {
         return efun::present(arg, ob);
+    }
 }
 
 // 针对area模式的tell_room
